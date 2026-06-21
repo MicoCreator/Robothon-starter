@@ -1,0 +1,49 @@
+{
+  "project": "Lockout Relay Rescue",
+  "robot": "15-DOF five-finger hand on a 4-DOF Cartesian wrist",
+  "task": "Contact-gated emergency relay isolation, latch verification, and lockout-tag seating",
+  "simulation": {
+    "engine": "MuJoCo",
+    "timestep_ms": 4,
+    "control_hz": 250,
+    "controller_hz": 250
+  },
+  "sensors": [
+    "five fingertip touch sensors",
+    "panel marker pose",
+    "isolator angle and velocity",
+    "latch travel",
+    "tag/slot poses"
+  ],
+  "disturbance": "Seeded two-axis panel jitter introduced during tactile engagement",
+  "feedback": {
+    "trials": 36,
+    "successes": 36,
+    "success_rate": 1.0,
+    "mean_final_switch_angle_deg": 86.929,
+    "mean_tag_error_mm": 14.063,
+    "mean_peak_touch_force_n": 50.732,
+    "mean_max_alignment_error_mm": 21.912,
+    "mean_vision_corrections": 292.58,
+    "mean_recovery_events": 3.14
+  },
+  "open_loop_baseline": {
+    "trials": 36,
+    "successes": 2,
+    "success_rate": 0.0556,
+    "mean_final_switch_angle_deg": 38.784,
+    "mean_tag_error_mm": 42.899,
+    "mean_peak_touch_force_n": 240.46,
+    "mean_max_alignment_error_mm": 22.336,
+    "mean_vision_corrections": 0.0,
+    "mean_recovery_events": 0.0
+  },
+  "delta_success_rate": 0.9444,
+  "demo_video": "lockout_relay_demo.mp4",
+  "benchmark_cases_per_condition": 36,
+  "limitations": [
+    "Simulation-only; visual pose is a noisy calibrated marker observation rather than a neural camera model.",
+    "The rotary mechanism receives a contact-gated torque proxy from wrist intent; it is not a physical hardware trial.",
+    "The tool-mounted lockout tag is held by the robot rather than grasped as a free object."
+  ]
+}

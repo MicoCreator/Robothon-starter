@@ -1,0 +1,183 @@
+<mujoco model="Lockout Relay Rescue">
+  <compiler angle="radian" coordinate="local"/>
+  <option timestep="0.004" integrator="implicitfast" gravity="0 0 -9.81"/>
+  <size nconmax="600" njmax="800"/>
+  <visual>
+    <global offwidth="800" offheight="500" azimuth="142" elevation="-28"/>
+    <quality shadowsize="4096" offsamples="4"/>
+  </visual>
+  <default>
+    <joint damping="1.1" armature="0.018" limited="true"/>
+    <geom density="420" friction="1.10 0.018 0.004" condim="4"/>
+    <position kp="420" forcerange="-150 150"/>
+  </default>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.055 0.080 0.110" rgb2="0.005 0.008 0.015" width="512" height="3072"/>
+    <texture name="floor_tex" type="2d" builtin="checker" rgb1="0.075 0.095 0.120" rgb2="0.115 0.135 0.165" width="256" height="256"/>
+    <material name="floor" texture="floor_tex" texrepeat="6 6" reflectance="0.22"/>
+    <material name="panel_material" rgba="0.12 0.17 0.23 1"/>
+    <material name="safety_yellow" rgba="0.98 0.68 0.06 1"/>
+    <material name="relay_red" rgba="0.88 0.14 0.10 1"/>
+    <material name="safe_green" rgba="0.10 0.88 0.38 1"/>
+    <material name="finger_material" rgba="0.18 0.48 0.82 1"/>
+    <material name="finger_tip" rgba="0.14 0.95 0.92 1"/>
+    <material name="lockout_tag" rgba="0.95 0.25 0.10 1"/>
+  </asset>
+  <worldbody>
+    <light name="key_light" pos="-0.4 -1.3 2.4" dir="0.4 0.6 -1" diffuse="1.0 0.88 0.72" castshadow="true"/>
+    <light name="rim_light" pos="1.7 1.1 1.8" dir="-1 -0.7 -0.5" diffuse="0.24 0.48 1.0"/>
+    <geom name="floor" type="plane" size="4 4 0.1" material="floor"/>
+    <geom name="workbench" type="box" pos="0.72 0 0.18" size="0.78 0.62 0.18" rgba="0.14 0.18 0.24 1" contype="0" conaffinity="0"/>
+    <geom name="bench_front_stripe" type="box" pos="0.72 -0.58 0.37" size="0.70 0.020 0.012" material="safety_yellow" contype="0" conaffinity="0"/>
+
+    <body name="safety_panel" pos="0.72 0 0.34" gravcomp="1">
+      <joint name="panel_x" type="slide" axis="1 0 0" range="-0.045 0.045"/>
+      <joint name="panel_y" type="slide" axis="0 1 0" range="-0.045 0.045"/>
+      <geom name="panel_chassis" type="box" pos="0 0 0.065" size="0.36 0.30 0.065" material="panel_material"/>
+      <geom name="panel_inset" type="box" pos="0 0 0.133" size="0.305 0.245 0.006" rgba="0.05 0.07 0.10 1"/>
+      <geom name="panel_label_safe" type="box" pos="-0.105 0.132 0.143" size="0.055 0.013 0.004" material="safe_green" contype="0" conaffinity="0"/>
+      <geom name="panel_label_live" type="box" pos="0.105 0.132 0.143" size="0.055 0.013 0.004" material="relay_red" contype="0" conaffinity="0"/>
+      <site name="vision_marker" type="sphere" pos="-0.26 0.22 0.150" size="0.013" rgba="0.15 0.92 0.55 0.90"/>
+
+      <body name="rotary_isolator" pos="0 0 0.145" gravcomp="1">
+        <joint name="isolator_angle" type="hinge" axis="0 0 1" range="0 1.5708" damping="1.8" armature="0.008"/>
+        <geom name="isolator_knob" type="cylinder" pos="0 0 0.025" size="0.058 0.030" material="relay_red"/>
+        <geom name="isolator_handle" type="box" pos="0.034 0 0.067" size="0.060 0.018 0.012" material="safety_yellow"/>
+        <geom name="isolator_key" type="box" pos="0.050 0 0.086" size="0.016 0.011 0.011" rgba="0.96 0.96 0.98 1"/>
+        <site name="isolator_center" type="sphere" pos="0 0 0.075" size="0.012" rgba="1 0.8 0.1 0.35"/>
+      </body>
+
+      <body name="verification_latch" pos="0.14 -0.15 0.135">
+        <joint name="latch_travel" type="slide" axis="0 0 -1" range="0 0.032" stiffness="340" springref="0" damping="3.5"/>
+        <geom name="latch_guard" type="cylinder" size="0.050 0.016" rgba="0.35 0.39 0.46 1" contype="1" conaffinity="1"/>
+        <geom name="latch_button" type="cylinder" pos="0 0 0.020" size="0.030 0.020" material="safe_green"/>
+        <site name="latch_site" type="sphere" pos="0 0 0.042" size="0.010" rgba="0.2 1 0.4 0.45"/>
+      </body>
+
+      <geom name="tag_slot_left" type="box" pos="-0.2100 0.1400 0.158" size="0.010 0.055 0.028" rgba="0.42 0.46 0.55 1"/>
+      <geom name="tag_slot_right" type="box" pos="-0.1300 0.1400 0.158" size="0.010 0.055 0.028" rgba="0.42 0.46 0.55 1"/>
+      <geom name="tag_slot_back" type="box" pos="-0.1700 0.1900 0.158" size="0.050 0.008 0.028" rgba="0.42 0.46 0.55 1"/>
+      <site name="tag_slot_target" type="sphere" pos="-0.17 0.14 0.174" size="0.010" rgba="1 0.40 0.10 0.60"/>
+    </body>
+
+    <body name="cartesian_hand" pos="0.4 0.0 0.72" gravcomp="1">
+      <joint name="hand_x" type="slide" axis="1 0 0" range="-0.28 0.54"/>
+      <joint name="hand_y" type="slide" axis="0 1 0" range="-0.48 0.48"/>
+      <joint name="hand_z" type="slide" axis="0 0 1" range="-0.16 0.30"/>
+      <joint name="wrist_yaw" type="hinge" axis="0 0 1" range="-1.75 1.75"/>
+      <geom name="palm" type="box" size="0.084 0.084 0.030" rgba="0.16 0.29 0.46 1"/>
+      <geom name="palm_guard" type="cylinder" pos="0 0 0.035" size="0.050 0.020" rgba="0.10 0.15 0.22 1" contype="0" conaffinity="0"/>
+      <site name="palm_pose" type="sphere" size="0.010" rgba="0.15 0.85 1 0.60"/>
+      
+      <body name="finger_0" pos="0.10000 0.00000 -0.020">
+        <joint name="finger_0_radial" type="slide" axis="-1.00000 -0.00000 0" range="0 0.062"/>
+        <joint name="finger_0_knuckle" type="hinge" axis="0.00000 -1.00000 0" range="-0.10 0.65"/>
+        <geom name="finger_0_proximal" type="capsule" fromto="0 0 0 0 0 -0.055" size="0.013" material="finger_material"/>
+        <body name="finger_0_distal_body" pos="0 0 -0.055">
+          <joint name="finger_0_distal" type="hinge" axis="0.00000 -1.00000 0" range="-0.10 0.75"/>
+          <geom name="finger_0_distal" type="capsule" fromto="0 0 0 0 0 -0.060" size="0.012" material="finger_material"/>
+          <geom name="finger_0_tip" type="sphere" pos="0 0 -0.070" size="0.019" material="finger_tip"/>
+          <site name="finger_0_touch" type="sphere" pos="0 0 -0.070" size="0.017" rgba="0.20 0.95 0.95 0.40"/>
+        </body>
+      </body>
+
+      <body name="finger_1" pos="0.03200 0.09400 -0.020">
+        <joint name="finger_1_radial" type="slide" axis="-0.32226 -0.94665 0" range="0 0.062"/>
+        <joint name="finger_1_knuckle" type="hinge" axis="0.94665 -0.32226 0" range="-0.10 0.65"/>
+        <geom name="finger_1_proximal" type="capsule" fromto="0 0 0 0 0 -0.055" size="0.013" material="finger_material"/>
+        <body name="finger_1_distal_body" pos="0 0 -0.055">
+          <joint name="finger_1_distal" type="hinge" axis="0.94665 -0.32226 0" range="-0.10 0.75"/>
+          <geom name="finger_1_distal" type="capsule" fromto="0 0 0 0 0 -0.060" size="0.012" material="finger_material"/>
+          <geom name="finger_1_tip" type="sphere" pos="0 0 -0.070" size="0.019" material="finger_tip"/>
+          <site name="finger_1_touch" type="sphere" pos="0 0 -0.070" size="0.017" rgba="0.20 0.95 0.95 0.40"/>
+        </body>
+      </body>
+
+      <body name="finger_2" pos="-0.07100 0.07000 -0.020">
+        <joint name="finger_2_radial" type="slide" axis="0.71210 -0.70207 0" range="0 0.062"/>
+        <joint name="finger_2_knuckle" type="hinge" axis="0.70207 0.71210 0" range="-0.10 0.65"/>
+        <geom name="finger_2_proximal" type="capsule" fromto="0 0 0 0 0 -0.055" size="0.013" material="finger_material"/>
+        <body name="finger_2_distal_body" pos="0 0 -0.055">
+          <joint name="finger_2_distal" type="hinge" axis="0.70207 0.71210 0" range="-0.10 0.75"/>
+          <geom name="finger_2_distal" type="capsule" fromto="0 0 0 0 0 -0.060" size="0.012" material="finger_material"/>
+          <geom name="finger_2_tip" type="sphere" pos="0 0 -0.070" size="0.019" material="finger_tip"/>
+          <site name="finger_2_touch" type="sphere" pos="0 0 -0.070" size="0.017" rgba="0.20 0.95 0.95 0.40"/>
+        </body>
+      </body>
+
+      <body name="finger_3" pos="-0.09400 -0.03500 -0.020">
+        <joint name="finger_3_radial" type="slide" axis="0.93715 0.34894 0" range="0 0.062"/>
+        <joint name="finger_3_knuckle" type="hinge" axis="-0.34894 0.93715 0" range="-0.10 0.65"/>
+        <geom name="finger_3_proximal" type="capsule" fromto="0 0 0 0 0 -0.055" size="0.013" material="finger_material"/>
+        <body name="finger_3_distal_body" pos="0 0 -0.055">
+          <joint name="finger_3_distal" type="hinge" axis="-0.34894 0.93715 0" range="-0.10 0.75"/>
+          <geom name="finger_3_distal" type="capsule" fromto="0 0 0 0 0 -0.060" size="0.012" material="finger_material"/>
+          <geom name="finger_3_tip" type="sphere" pos="0 0 -0.070" size="0.019" material="finger_tip"/>
+          <site name="finger_3_touch" type="sphere" pos="0 0 -0.070" size="0.017" rgba="0.20 0.95 0.95 0.40"/>
+        </body>
+      </body>
+
+      <body name="finger_4" pos="0.04300 -0.09000 -0.020">
+        <joint name="finger_4_radial" type="slide" axis="-0.43110 0.90230 0" range="0 0.062"/>
+        <joint name="finger_4_knuckle" type="hinge" axis="-0.90230 -0.43110 0" range="-0.10 0.65"/>
+        <geom name="finger_4_proximal" type="capsule" fromto="0 0 0 0 0 -0.055" size="0.013" material="finger_material"/>
+        <body name="finger_4_distal_body" pos="0 0 -0.055">
+          <joint name="finger_4_distal" type="hinge" axis="-0.90230 -0.43110 0" range="-0.10 0.75"/>
+          <geom name="finger_4_distal" type="capsule" fromto="0 0 0 0 0 -0.060" size="0.012" material="finger_material"/>
+          <geom name="finger_4_tip" type="sphere" pos="0 0 -0.070" size="0.019" material="finger_tip"/>
+          <site name="finger_4_touch" type="sphere" pos="0 0 -0.070" size="0.017" rgba="0.20 0.95 0.95 0.40"/>
+        </body>
+      </body>
+      <body name="tool_mounted_lockout_tag" pos="-0.105 0.045 -0.175">
+        <geom name="lockout_tag" type="box" size="0.032 0.045 0.010" material="lockout_tag"/>
+        <geom name="tag_tab" type="capsule" fromto="0 0.035 0 0 0.072 0" size="0.008" material="lockout_tag"/>
+        <site name="tag_tip" type="sphere" pos="0 0 -0.012" size="0.009" rgba="1 0.30 0.08 0.65"/>
+      </body>
+    </body>
+    <camera name="overview" pos="1.56 -1.65 1.28" xyaxes="0.74 0.67 0 -0.28 0.31 0.91"/>
+  </worldbody>
+  <actuator>
+    <position name="hand_x_position" joint="hand_x" kp="760" forcerange="-260 260"/>
+    <position name="hand_y_position" joint="hand_y" kp="760" forcerange="-260 260"/>
+    <position name="hand_z_position" joint="hand_z" kp="840" forcerange="-300 300"/>
+    <position name="wrist_yaw_position" joint="wrist_yaw" kp="115" forcerange="-55 55"/>
+    
+    <position name="finger_0_radial_position" joint="finger_0_radial" kp="135" forcerange="-26 26"/>
+    <position name="finger_0_knuckle_position" joint="finger_0_knuckle" kp="55" forcerange="-10 10"/>
+    <position name="finger_0_distal_position" joint="finger_0_distal" kp="42" forcerange="-8 8"/>
+
+    <position name="finger_1_radial_position" joint="finger_1_radial" kp="135" forcerange="-26 26"/>
+    <position name="finger_1_knuckle_position" joint="finger_1_knuckle" kp="55" forcerange="-10 10"/>
+    <position name="finger_1_distal_position" joint="finger_1_distal" kp="42" forcerange="-8 8"/>
+
+    <position name="finger_2_radial_position" joint="finger_2_radial" kp="135" forcerange="-26 26"/>
+    <position name="finger_2_knuckle_position" joint="finger_2_knuckle" kp="55" forcerange="-10 10"/>
+    <position name="finger_2_distal_position" joint="finger_2_distal" kp="42" forcerange="-8 8"/>
+
+    <position name="finger_3_radial_position" joint="finger_3_radial" kp="135" forcerange="-26 26"/>
+    <position name="finger_3_knuckle_position" joint="finger_3_knuckle" kp="55" forcerange="-10 10"/>
+    <position name="finger_3_distal_position" joint="finger_3_distal" kp="42" forcerange="-8 8"/>
+
+    <position name="finger_4_radial_position" joint="finger_4_radial" kp="135" forcerange="-26 26"/>
+    <position name="finger_4_knuckle_position" joint="finger_4_knuckle" kp="55" forcerange="-10 10"/>
+    <position name="finger_4_distal_position" joint="finger_4_distal" kp="42" forcerange="-8 8"/>
+    <position name="panel_x_position" joint="panel_x" kp="1200" forcerange="-280 280"/>
+    <position name="panel_y_position" joint="panel_y" kp="1200" forcerange="-280 280"/>
+    <motor name="wrist_coupled_isolator_torque" joint="isolator_angle" gear="1" forcerange="-8 8"/>
+  </actuator>
+  <sensor>
+    <framepos name="vision_marker_position" objtype="site" objname="vision_marker"/>
+    <framepos name="palm_position" objtype="site" objname="palm_pose"/>
+    <framepos name="tag_position" objtype="site" objname="tag_tip"/>
+    <framepos name="tag_slot_position" objtype="site" objname="tag_slot_target"/>
+    <framepos name="isolator_position" objtype="site" objname="isolator_center"/>
+    <jointpos name="isolator_angle_sensor" joint="isolator_angle"/>
+    <jointvel name="isolator_velocity_sensor" joint="isolator_angle"/>
+    <jointpos name="latch_travel_sensor" joint="latch_travel"/>
+    <touch name="finger_0_touch_sensor" site="finger_0_touch"/>
+<touch name="finger_1_touch_sensor" site="finger_1_touch"/>
+<touch name="finger_2_touch_sensor" site="finger_2_touch"/>
+<touch name="finger_3_touch_sensor" site="finger_3_touch"/>
+<touch name="finger_4_touch_sensor" site="finger_4_touch"/>
+  </sensor>
+</mujoco>

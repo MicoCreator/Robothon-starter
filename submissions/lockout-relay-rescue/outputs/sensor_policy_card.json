@@ -1,0 +1,21 @@
+{
+  "observation_channels": [
+    "panel marker xyz",
+    "five tactile contact forces",
+    "isolator angle and velocity",
+    "latch travel",
+    "tag/slot xyz"
+  ],
+  "action_channels": [
+    "Cartesian x/y/z",
+    "wrist yaw",
+    "five radial closures",
+    "ten finger flex joints",
+    "contact-gated rotary torque"
+  ],
+  "safety_guards": [
+    "6 N tactile back-drive threshold",
+    "tactile contact gate before isolation torque",
+    "angle/latch/tag terminal checks"
+  ]
+}
