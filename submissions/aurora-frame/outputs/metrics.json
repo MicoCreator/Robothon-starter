@@ -1,0 +1,62 @@
+{
+  "project": "AURORA FRAME \u2014 Bimanual Emergency Shelter Deployment Under Wind",
+  "engine": "MuJoCo",
+  "robot": "Fixed-base bimanual emergency-response rig with six force-limited Cartesian axes",
+  "task": "Catch a passive spring-loaded shelter, physically press three latch sliders, and retain the frame during gusts through palm contact and tendon feedback.",
+  "physics_integrity": {
+    "task_object_actuators": "none",
+    "direct_task_object_qpos_writes_after_initialization": "none",
+    "passive_components": [
+      "frame pitch hinge",
+      "three latch slide joints",
+      "two spatial guyline tendons"
+    ],
+    "disturbance": "MuJoCo xfrc_applied wind force and pitch torque on the dynamic shelter frame"
+  },
+  "sensors": [
+    "frame pitch and angular velocity",
+    "three latch positions",
+    "two tendon lengths",
+    "both palm positions",
+    "actual palm-handle contact forces"
+  ],
+  "evaluation": {
+    "paired_held_out_seeds": 30,
+    "randomized": [
+      "gust direction",
+      "gust peak",
+      "initial frame angle",
+      "frame spring rate",
+      "guyline stiffness"
+    ]
+  },
+  "feedback": {
+    "trials": 30,
+    "successes": 30,
+    "success_rate": 1.0,
+    "mean_max_frame_error_deg": 11.164,
+    "mean_max_gust_deflection_deg": 2.348,
+    "mean_final_frame_error_deg": 9.007,
+    "mean_peak_guyline_load_n": 119.843,
+    "mean_latches_engaged": 3.0,
+    "mean_feedback_corrections": 58.0
+  },
+  "blind_timing_baseline": {
+    "trials": 30,
+    "successes": 12,
+    "success_rate": 0.4,
+    "mean_max_frame_error_deg": 11.164,
+    "mean_max_gust_deflection_deg": 0.478,
+    "mean_final_frame_error_deg": 10.263,
+    "mean_peak_guyline_load_n": 119.843,
+    "mean_latches_engaged": 3.0,
+    "mean_feedback_corrections": 0.0
+  },
+  "delta_success_rate": 0.6,
+  "demo_video": "aurora_frame_demo.mp4",
+  "limitations": [
+    "Simulation-only project; no hardware deployment claim.",
+    "Wind is modeled as an external force/torque rather than a CFD airflow model.",
+    "The robot is a fixed-base upper-body rig to isolate bimanual deployment control from walking."
+  ]
+}

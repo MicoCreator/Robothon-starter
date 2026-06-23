@@ -1,0 +1,13 @@
+{
+  "generated_by": "python run_aurora_frame.py",
+  "cases_per_condition": 30,
+  "artifacts": [
+    "aurora_frame_demo.mp4",
+    "aurora_frame_scene.xml",
+    "metrics.json",
+    "paired_ablation.json",
+    "demo_trajectory.json",
+    "sensor_policy_card.json",
+    "benchmark.csv"
+  ]
+}

@@ -1,0 +1,165 @@
+<mujoco model="aurora_frame_emergency_shelter">
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.004" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic" jacobian="sparse"/>
+  <size njmax="4000" nconmax="1000"/>
+  <default>
+    <joint damping="1.2" armature="0.01"/>
+    <geom condim="4" friction="1.1 0.06 0.02" solref=".012 1" solimp=".96 .99 .003"/>
+    <position kp="980" forcerange="-245 245"/>
+  </default>
+  <visual>
+    <global offwidth="960" offheight="600" azimuth="135" elevation="-19"/>
+    <headlight diffuse="0.58 .72 .84" ambient=".12 .15 .20" specular=".85 .85 .95"/>
+    <rgba haze=".03 .05 .10 1"/>
+  </visual>
+  <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.010 0.018 0.045" rgb2="0.10 0.22 0.32" width="512" height="3072"/>
+    <texture name="ground" type="2d" builtin="checker" rgb1=".025 .040 .060" rgb2=".042 .070 .085" width="512" height="512"/>
+    <material name="ground_mat" texture="ground" texrepeat="8 8" reflectance=".18"/>
+    <material name="frame_mat" rgba=".15 .88 .86 1" specular=".75" shininess=".8"/>
+    <material name="canopy_mat" rgba=".07 .68 .78 .78" specular=".85" shininess=".85"/>
+    <material name="anchor_mat" rgba=".95 .49 .08 1" specular=".45"/>
+  </asset>
+  <worldbody>
+    <light name="key" pos="0.5 -1.4 2.7" dir="0.08 .35 -1" diffuse=".62 .82 1" specular=".7 .8 1"/>
+    <light name="amber_rim" pos="1.55 1.2 1.6" dir="-.55 -.45 -.45" diffuse="1 .43 .12"/>
+    <geom name="floor" type="plane" size="0 0 .1" material="ground_mat"/>
+    <geom name="stage_edge" type="box" pos=".80 0 .025" size="1.20 .94 .025" rgba=".05 .11 .15 1" contype="0" conaffinity="0"/>
+    <geom name="response_console" type="box" pos="-.10 0 .64" size=".11 .42 .67" rgba=".07 .12 .18 1" contype="0" conaffinity="0"/>
+    <geom name="responder_chest" type="box" pos=".02 0 1.04" size=".10 .34 .24" rgba=".11 .22 .31 1" contype="0" conaffinity="0"/>
+    <geom name="chest_status" type="box" pos=".132 -.01 1.10" size=".006 .15 .038" rgba=".22 .98 .87 1" contype="0" conaffinity="0"/>
+    <geom type="sphere" pos=".04 0 1.43" size=".13" rgba=".34 .96 .88 1" contype="0" conaffinity="0"/>
+    
+    <body name="left_shoulder" pos="0.06 -0.340 0.84">
+      <geom type="sphere" size="0.092" rgba=".20 .85 .84 1" contype="0" conaffinity="0"/>
+      <body name="left_x_carriage">
+        <joint name="left_arm_x" type="slide" axis="1 0 0" range="0 1.24" damping="8"/>
+        <geom type="capsule" fromto="0 0 0 0.13 0 0" size="0.035" rgba="0.14 0.32 0.43 1" contype="0" conaffinity="0"/>
+        <body name="left_y_carriage" pos="0.13 0 0">
+          <joint name="left_arm_y" type="slide" axis="0 1 0" range="-0.44 0.44" damping="8"/>
+          <geom type="capsule" fromto="0 0 0 0 0.10 0" size="0.030" rgba="0.16 0.38 0.52 1" contype="0" conaffinity="0"/>
+          <body name="left_z_carriage" pos="0 0.10 0">
+            <joint name="left_arm_z" type="slide" axis="0 0 1" range="-0.72 0.48" damping="10"/>
+            <geom type="capsule" fromto="0 0 0 0 0 0.12" size="0.032" rgba="0.19 0.42 0.56 1" contype="0" conaffinity="0"/>
+            <body name="left_palm" pos="0 0 0.12">
+              <geom name="left_palm_geom" type="box" size="0.055 0.102 0.036" rgba=".20 .85 .84 1" friction="1.8 0.08 0.02"/>
+              <geom type="sphere" pos="0 0.071 0.037" size="0.019" rgba="0.95 0.75 0.22 1" friction="2.2 0.09 0.03"/>
+              <geom type="sphere" pos="0 -0.071 0.037" size="0.019" rgba="0.95 0.75 0.22 1" friction="2.2 0.09 0.03"/>
+              <site name="left_palm_site" type="sphere" size="0.014" rgba="0.25 1 0.95 .5"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    
+    <body name="right_shoulder" pos="0.06 0.340 0.84">
+      <geom type="sphere" size="0.092" rgba=".46 .68 1 1" contype="0" conaffinity="0"/>
+      <body name="right_x_carriage">
+        <joint name="right_arm_x" type="slide" axis="1 0 0" range="0 1.24" damping="8"/>
+        <geom type="capsule" fromto="0 0 0 0.13 0 0" size="0.035" rgba="0.14 0.32 0.43 1" contype="0" conaffinity="0"/>
+        <body name="right_y_carriage" pos="0.13 0 0">
+          <joint name="right_arm_y" type="slide" axis="0 1 0" range="-0.44 0.44" damping="8"/>
+          <geom type="capsule" fromto="0 0 0 0 0.10 0" size="0.030" rgba="0.16 0.38 0.52 1" contype="0" conaffinity="0"/>
+          <body name="right_z_carriage" pos="0 0.10 0">
+            <joint name="right_arm_z" type="slide" axis="0 0 1" range="-0.72 0.48" damping="10"/>
+            <geom type="capsule" fromto="0 0 0 0 0 0.12" size="0.032" rgba="0.19 0.42 0.56 1" contype="0" conaffinity="0"/>
+            <body name="right_palm" pos="0 0 0.12">
+              <geom name="right_palm_geom" type="box" size="0.055 0.102 0.036" rgba=".46 .68 1 1" friction="1.8 0.08 0.02"/>
+              <geom type="sphere" pos="0 0.071 0.037" size="0.019" rgba="0.95 0.75 0.22 1" friction="2.2 0.09 0.03"/>
+              <geom type="sphere" pos="0 -0.071 0.037" size="0.019" rgba="0.95 0.75 0.22 1" friction="2.2 0.09 0.03"/>
+              <site name="right_palm_site" type="sphere" size="0.014" rgba="0.25 1 0.95 .5"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Passive shelter: a spring deploys it; contacts and tendons govern stability. -->
+    <body name="shelter_frame" pos=".70 0 .12">
+      <joint name="frame_pitch" type="hinge" axis="0 -1 0" limited="true" range=".04 1.24" damping="25" frictionloss=".45" stiffness="1000" springref="1.035"/>
+      <geom name="left_base_pivot" type="cylinder" pos="0 -.39 0" size=".055 .055" euler="1.5708 0 0" material="anchor_mat"/>
+      <geom name="right_base_pivot" type="cylinder" pos="0 .39 0" size=".055 .055" euler="1.5708 0 0" material="anchor_mat"/>
+      <geom name="frame_left_rail" type="capsule" fromto="0 -.39 0 .72 -.39 0" size=".027" material="frame_mat"/>
+      <geom name="frame_right_rail" type="capsule" fromto="0 .39 0 .72 .39 0" size=".027" material="frame_mat"/>
+      <geom name="frame_ridge" type="capsule" fromto=".72 -.39 0 .72 .39 0" size=".027" material="frame_mat"/>
+      <geom name="storm_canopy" type="box" pos=".36 0 .018" size=".35 .41 .014" material="canopy_mat" contype="0" conaffinity="0"/>
+      <geom name="left_canopy_wall" type="box" pos=".36 -.405 .18" size=".35 .012 .17" material="canopy_mat" mass=".001" contype="0" conaffinity="0"/>
+      <geom name="right_canopy_wall" type="box" pos=".36 .405 .18" size=".35 .012 .17" material="canopy_mat" mass=".001" contype="0" conaffinity="0"/>
+      <geom name="left_handle" type="sphere" pos=".53 -.39 .014" size=".052" rgba=".94 .57 .12 1" friction="2.0 .10 .03"/>
+      <geom name="right_handle" type="sphere" pos=".53 .39 .014" size=".052" rgba=".94 .57 .12 1" friction="2.0 .10 .03"/>
+      <site name="frame_center_site" type="sphere" pos=".47 0 .018" size=".012" rgba=".2 1 .9 .65"/>
+      <site name="left_handle_site" type="sphere" pos=".53 -.39 .014" size=".020" rgba="1 .72 .2 .6"/>
+      <site name="right_handle_site" type="sphere" pos=".53 .39 .014" size=".020" rgba="1 .72 .2 .6"/>
+      <site name="left_guy_site" type="sphere" pos=".71 -.34 .012" size=".011" rgba=".3 .95 1 .5"/>
+      <site name="right_guy_site" type="sphere" pos=".71 .34 .012" size=".011" rgba=".3 .95 1 .5"/>
+    </body>
+
+    <body name="left_anchor" pos="1.43 -.69 .045">
+      <geom name="left_anchor_geom" type="cylinder" size=".052 .045" material="anchor_mat"/>
+      <site name="left_anchor_site" type="sphere" size=".012" rgba="1 .55 .1 .65"/>
+    </body>
+    <body name="right_anchor" pos="1.43 .69 .045">
+      <geom name="right_anchor_geom" type="cylinder" size=".052 .045" material="anchor_mat"/>
+      <site name="right_anchor_site" type="sphere" size=".012" rgba="1 .55 .1 .65"/>
+    </body>
+    
+    <body name="latch_1_housing" pos="1.345 -0.300 0.60">
+      <geom name="latch_1_housing_geom" type="box" size="0.068 0.062 0.050" rgba="0.16 0.20 0.25 1" contype="0" conaffinity="0"/>
+      <body name="latch_1_bolt" pos="0 0 -0.025">
+        <joint name="latch_1_travel" type="slide" axis="0 0 -1" limited="true" range="0 0.052" damping="8" frictionloss="4.0" stiffness="82" springref="0"/>
+        <geom name="latch_1_button" type="box" size="0.046 0.046 0.020" rgba="0.98 0.55 0.09 1" friction="1.9 0.08 0.02"/>
+        <site name="latch_1_site" type="sphere" size="0.012" rgba="1 0.73 0.18 .7"/>
+      </body>
+    </body>
+
+    <body name="latch_2_housing" pos="1.345 0.000 0.60">
+      <geom name="latch_2_housing_geom" type="box" size="0.068 0.062 0.050" rgba="0.16 0.20 0.25 1" contype="0" conaffinity="0"/>
+      <body name="latch_2_bolt" pos="0 0 -0.025">
+        <joint name="latch_2_travel" type="slide" axis="0 0 -1" limited="true" range="0 0.052" damping="8" frictionloss="4.0" stiffness="82" springref="0"/>
+        <geom name="latch_2_button" type="box" size="0.046 0.046 0.020" rgba="0.98 0.55 0.09 1" friction="1.9 0.08 0.02"/>
+        <site name="latch_2_site" type="sphere" size="0.012" rgba="1 0.73 0.18 .7"/>
+      </body>
+    </body>
+
+    <body name="latch_3_housing" pos="1.345 0.300 0.60">
+      <geom name="latch_3_housing_geom" type="box" size="0.068 0.062 0.050" rgba="0.16 0.20 0.25 1" contype="0" conaffinity="0"/>
+      <body name="latch_3_bolt" pos="0 0 -0.025">
+        <joint name="latch_3_travel" type="slide" axis="0 0 -1" limited="true" range="0 0.052" damping="8" frictionloss="4.0" stiffness="82" springref="0"/>
+        <geom name="latch_3_button" type="box" size="0.046 0.046 0.020" rgba="0.98 0.55 0.09 1" friction="1.9 0.08 0.02"/>
+        <site name="latch_3_site" type="sphere" size="0.012" rgba="1 0.73 0.18 .7"/>
+      </body>
+    </body>
+    <camera name="hero" pos="2.52 -2.58 1.62" xyaxes=".70 .70 0 -.27 .27 .925"/>
+    <camera name="proof" pos="1.68 -1.25 .92" xyaxes=".69 .72 0 -.32 .30 .90"/>
+  </worldbody>
+  <tendon>
+    <spatial name="left_guyline" width=".008" rgba=".96 .63 .13 1" stiffness="290" damping="7" springlength="0.58">
+      <site site="left_guy_site"/><site site="left_anchor_site"/>
+    </spatial>
+    <spatial name="right_guyline" width=".008" rgba=".96 .63 .13 1" stiffness="290" damping="7" springlength="0.58">
+      <site site="right_guy_site"/><site site="right_anchor_site"/>
+    </spatial>
+  </tendon>
+  <actuator>
+    <position name="left_arm_x_position" joint="left_arm_x"/>
+    <position name="left_arm_y_position" joint="left_arm_y"/>
+    <position name="left_arm_z_position" joint="left_arm_z"/>
+    <position name="right_arm_x_position" joint="right_arm_x"/>
+    <position name="right_arm_y_position" joint="right_arm_y"/>
+    <position name="right_arm_z_position" joint="right_arm_z"/>
+  </actuator>
+  <sensor>
+    <jointpos name="frame_pitch_sensor" joint="frame_pitch"/>
+    <jointvel name="frame_pitch_velocity" joint="frame_pitch"/>
+    <framepos name="frame_center_position" objtype="site" objname="frame_center_site"/>
+    <framepos name="left_handle_position" objtype="site" objname="left_handle_site"/>
+    <framepos name="right_handle_position" objtype="site" objname="right_handle_site"/>
+    <framepos name="left_palm_position" objtype="site" objname="left_palm_site"/>
+    <framepos name="right_palm_position" objtype="site" objname="right_palm_site"/>
+    <tendonpos name="left_guyline_length" tendon="left_guyline"/>
+    <tendonpos name="right_guyline_length" tendon="right_guyline"/>
+    <jointpos name="latch_1_sensor" joint="latch_1_travel"/>
+    <jointpos name="latch_2_sensor" joint="latch_2_travel"/>
+    <jointpos name="latch_3_sensor" joint="latch_3_travel"/>
+  </sensor>
+</mujoco>
