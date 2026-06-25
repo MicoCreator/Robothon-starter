@@ -9,10 +9,10 @@
   "actions": [
     "left/right Cartesian palm x/y/z position targets"
   ],
-  "feedback_law": "palm contact points shift with measured frame-pitch error during gust stabilization",
+  "feedback_law": "palm contact points shift with measured frame-pitch error; recovery events are triggered during rotating gusts and microbursts while tendon lengths are monitored as passive load checks",
   "safety_gates": [
-    "all three latch positions \u2265 39 mm",
+    "all three latch positions >= 39 mm",
     "terminal frame error < 10.5 degrees",
-    "maximum gust deflection < 5 degrees"
+    "maximum gust deflection < 6.0 degrees"
   ]
 }

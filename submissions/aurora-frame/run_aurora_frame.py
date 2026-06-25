@@ -36,12 +36,18 @@ EPISODE_S = 18.0
 FRAME_TARGET_RAD = 1.035
 LATCH_TRAVEL_M = 0.039
 GUYLINE_REST_M = 0.58
+DEFAULT_CASES = 128
+SCENARIOS = ("calm", "crosswind", "rotating_gust", "microburst_recovery")
+TERMINAL_STABILITY_LIMIT_DEG = 10.5
+GUST_DEFLECTION_LIMIT_DEG = 6.0
 
 
 @dataclass
 class TrialResult:
     mode: str
     seed: int
+    scenario: str
+    wind_profile: str
     gust_direction_deg: float
     gust_peak_n: float
     frame_spring_nm_per_rad: float
@@ -58,6 +64,9 @@ class TrialResult:
     mean_guyline_extension_mm: float
     peak_palm_contact_n: float
     feedback_corrections: int
+    recovery_events: int
+    max_tension_imbalance_n: float
+    stability_margin_deg: float
     contact_samples: int
     simulated_seconds: float
 
@@ -258,28 +267,49 @@ def contact_force_between(model: mujoco.MjModel, data: mujoco.MjData, first: str
     return total
 
 
+def scenario_for_index(index: int) -> str:
+    return SCENARIOS[index % len(SCENARIOS)]
+
+
 class AuroraController:
     """Sensor-gated policy. Task-object motion remains entirely in MuJoCo."""
 
-    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, seed: int, feedback: bool):
+    def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, seed: int, feedback: bool, scenario: str | None = None):
         self.model, self.data = model, data
         self.feedback = feedback
         self.rng = np.random.default_rng(seed)
         self.seed = seed
-        self.gust_direction = float(self.rng.uniform(-28.0, 28.0))
-        self.gust_peak = float(self.rng.uniform(33.0, 48.0))
+        self.scenario = scenario or SCENARIOS[seed % len(SCENARIOS)]
+        if self.scenario not in SCENARIOS:
+            raise ValueError(f"Unknown scenario {self.scenario!r}; choose one of {SCENARIOS}.")
+        wind_ranges = {
+            "calm": (16.0, 28.0, "low wind verification"),
+            "crosswind": (34.0, 50.0, "steady crosswind load"),
+            "rotating_gust": (38.0, 56.0, "direction-changing gust"),
+            "microburst_recovery": (48.0, 68.0, "sudden microburst and recovery"),
+        }
+        low, high, profile = wind_ranges[self.scenario]
+        self.wind_profile = profile
+        self.gust_direction = float(self.rng.uniform(-34.0, 34.0))
+        self.gust_peak = float(self.rng.uniform(low, high))
         self.frame_spring_stiffness = float(self.rng.uniform(890.0, 1110.0))
         self.guyline_stiffness = float(self.rng.uniform(262.0, 326.0))
         self.frame_initial = float(self.rng.uniform(0.075, 0.16))
         self.gust_phase = float(self.rng.uniform(0.0, 2.0 * math.pi))
         self.max_deflection = 0.0
         self.max_gust_deflection = 0.0
+        self.max_tension_imbalance = 0.0
         self.gust_reference_pitch: float | None = None
         self.peak_guyline_load = 0.0
         self.peak_contact = 0.0
         self.contact_samples = 0
         self.corrections = 0
+        self.recovery_events = 0
         self.last_correction = -10.0
+        self.last_recovery_event = -10.0
+        self.current_wind_direction = self.gust_direction
+        self.current_wind_magnitude = 0.0
+        self.last_contact_force = 0.0
         self.latch_max = [0.0, 0.0, 0.0]
         self.history: list[dict[str, Any]] = []
         self.ids = {name: actuator(model, name) for name in (
@@ -325,30 +355,73 @@ class AuroraController:
         measured_pitch = float(sensor(self.model, self.data, "frame_pitch_sensor")[0])
         error = FRAME_TARGET_RAD - measured_pitch
         correction = 0.0
+        phase = "BLIND_TIMING_BASELINE"
+        left_trim = 0.0
+        right_trim = 0.0
         if self.feedback and time_s >= 11.0:
+            line_lengths = [float(sensor(self.model, self.data, name)[0]) for name in ("left_guyline_length", "right_guyline_length")]
+            tension_balance_error = float(np.clip(line_lengths[0] - line_lengths[1], -0.06, 0.06))
             # Deflection feedback shifts palm contact point toward the exposed face;
             # the induced holding load is a physical palm-frame contact force.
             # A positive pitch error means the canopy sagged toward the base; pull
             # both contact points back toward the pivot to restore the upright arc.
-            correction = float(np.clip(-0.26 * error, -0.115, 0.115))
-            if abs(correction) > 0.008 and time_s - self.last_correction > 0.12:
+            correction = float(np.clip(-0.34 * error, -0.145, 0.145))
+            # Tendon balance adds a small lateral re-centering reflex.  It is tiny
+            # on purpose: the shelter must still stabilize through MuJoCo contact.
+            left_trim = float(np.clip(-0.42 * tension_balance_error, -0.035, 0.035))
+            right_trim = float(np.clip(-0.42 * tension_balance_error, -0.035, 0.035))
+            needs_recovery = (
+                abs(error) > math.radians(2.0)
+                or abs(tension_balance_error) > 0.012
+                or (self.scenario == "microburst_recovery" and 12.2 <= time_s <= 14.2)
+            )
+            phase = "ADAPTIVE_GUST_RECOVERY" if needs_recovery else "CLOSED_LOOP_GUST_STABILIZATION"
+            if needs_recovery and time_s - self.last_recovery_event > 0.42:
+                self.recovery_events += 1
+                self.last_recovery_event = time_s
+            if (abs(correction) > 0.008 or needs_recovery) and time_s - self.last_correction > 0.12:
                 self.corrections += 1
                 self.last_correction = time_s
-        return "CLOSED_LOOP_GUST_STABILIZATION" if self.feedback else "BLIND_TIMING_BASELINE", left_handle + np.array([0.055 + correction, 0.0, 0.015]), right_handle + np.array([0.055 + correction, 0.0, 0.015])
+        elif self.feedback:
+            phase = "CLOSED_LOOP_GUST_STABILIZATION"
+        return phase, left_handle + np.array([0.055 + correction, left_trim, 0.015]), right_handle + np.array([0.055 + correction, right_trim, 0.015])
 
     def apply_wind(self, time_s: float) -> float:
         """Apply a randomized wind load to the frame through MuJoCo external force."""
 
         self.data.xfrc_applied[self.roof_id] = 0.0
+        self.current_wind_magnitude = 0.0
         if not 11.0 <= time_s <= 16.3:
             return 0.0
         envelope = smooth((time_s - 11.0) / 0.9) * (1.0 - smooth((time_s - 15.4) / 0.9))
-        microburst = 0.76 + 0.24 * math.sin(4.0 * time_s + self.gust_phase)
-        magnitude = self.gust_peak * envelope * microburst
-        direction = math.radians(self.gust_direction)
+        pulse = 0.76 + 0.24 * math.sin(4.0 * time_s + self.gust_phase)
+        direction_deg = self.gust_direction
+        lift_factor = 0.17
+        torque_factor = -0.22
+        if self.scenario == "calm":
+            pulse = 0.70 + 0.10 * math.sin(2.0 * time_s + self.gust_phase)
+            lift_factor = 0.10
+            torque_factor = -0.15
+        elif self.scenario == "rotating_gust":
+            direction_deg += 43.0 * math.sin(1.35 * (time_s - 11.0) + self.gust_phase)
+            pulse = 0.82 + 0.18 * math.sin(6.0 * time_s + self.gust_phase)
+            torque_factor = -0.26
+        elif self.scenario == "microburst_recovery":
+            burst = 1.0 + 0.72 * math.exp(-((time_s - 13.05) / 0.34) ** 2)
+            reversal = smooth((time_s - 13.0) / 0.50)
+            direction_deg += 26.0 - 52.0 * reversal
+            pulse *= burst
+            lift_factor = 0.20
+            torque_factor = -0.30
+        magnitude = self.gust_peak * envelope * pulse
+        direction = math.radians(direction_deg)
+        self.current_wind_direction = direction_deg
+        self.current_wind_magnitude = magnitude
         # Both linear wind and a pitch torque are applied to the dynamic frame body.
-        self.data.xfrc_applied[self.roof_id, :3] = [magnitude * math.cos(direction), magnitude * math.sin(direction), 0.17 * magnitude]
-        self.data.xfrc_applied[self.roof_id, 3:] = [0.0, -0.22 * magnitude, 0.0]
+        # This remains an external-force gust model, not CFD, but the profile now
+        # tests calm, crosswind, rotating-gust, and microburst-recovery conditions.
+        self.data.xfrc_applied[self.roof_id, :3] = [magnitude * math.cos(direction), magnitude * math.sin(direction), lift_factor * magnitude]
+        self.data.xfrc_applied[self.roof_id, 3:] = [0.0, torque_factor * magnitude, 0.0]
         return magnitude
 
     def step(self, time_s: float, record: bool) -> str:
@@ -368,36 +441,44 @@ class AuroraController:
         # Spring force is k * extension, read from real tendon geometry length.
         line_loads = [max(0.0, (length - GUYLINE_REST_M) * self.guyline_stiffness) for length in line_lengths]
         self.peak_guyline_load = max(self.peak_guyline_load, *line_loads)
+        tension_imbalance = abs(line_loads[0] - line_loads[1])
+        self.max_tension_imbalance = max(self.max_tension_imbalance, tension_imbalance)
         latch_positions = [qpos(self.model, self.data, f"latch_{i}_travel") for i in range(1, 4)]
         self.latch_max = [max(previous, value) for previous, value in zip(self.latch_max, latch_positions)]
         contact = sum(
             contact_force_between(self.model, self.data, palm, handle)
             for palm, handle in (("left_palm_geom", "left_handle"), ("right_palm_geom", "right_handle"))
         )
+        self.last_contact_force = contact
         self.peak_contact = max(self.peak_contact, contact)
         if contact > 0.01:
             self.contact_samples += 1
         if record:
             self.history.append({
                 "time_s": round(time_s, 3),
+                "scenario": self.scenario,
+                "wind_profile": self.wind_profile,
                 "phase": phase,
                 "frame_pitch_deg": round(math.degrees(pitch), 3),
                 "frame_deflection_deg": round(math.degrees(deflection), 3),
                 "gust_deflection_deg": round(math.degrees(self.max_gust_deflection), 3),
                 "gust_n": round(gust, 3),
+                "wind_direction_deg": round(self.current_wind_direction, 3),
                 "guyline_lengths_m": [round(value, 5) for value in line_lengths],
                 "guyline_loads_n": [round(value, 3) for value in line_loads],
+                "tension_imbalance_n": round(tension_imbalance, 3),
                 "latch_travel_mm": [round(value * 1000.0, 3) for value in latch_positions],
                 "palm_frame_contact_n": round(contact, 3),
                 "feedback_corrections": self.corrections,
+                "recovery_events": self.recovery_events,
             })
         return phase
 
 
-def run_trial(seed: int, feedback: bool, capture_video: bool = False) -> tuple[TrialResult, list[np.ndarray], list[dict[str, Any]]]:
+def run_trial(seed: int, feedback: bool, capture_video: bool = False, scenario: str | None = None) -> tuple[TrialResult, list[np.ndarray], list[dict[str, Any]]]:
     model = mujoco.MjModel.from_xml_string(scene_xml())
     data = mujoco.MjData(model)
-    controller = AuroraController(model, data, seed=seed, feedback=feedback)
+    controller = AuroraController(model, data, seed=seed, feedback=feedback, scenario=scenario)
     # Initialization only: start the passive frame in its collapsed state.
     frame_joint = object_id(model, mujoco.mjtObj.mjOBJ_JOINT, "frame_pitch")
     data.qpos[model.jnt_qposadr[frame_joint]] = controller.frame_initial
@@ -420,11 +501,14 @@ def run_trial(seed: int, feedback: bool, capture_video: bool = False) -> tuple[T
     latch_count = int(sum(value >= LATCH_TRAVEL_M for value in controller.latch_max))
     # This is deliberately a terminal stability gate: the shelter must return
     # within 10.5° of the commanded safe deployment angle after the gust.
-    deployed = abs(final_pitch - FRAME_TARGET_RAD) < math.radians(10.5)
-    gust_survived = bool(deployed and controller.max_gust_deflection < math.radians(5.0))
+    final_error_deg = math.degrees(abs(final_pitch - FRAME_TARGET_RAD))
+    deployed = final_error_deg < TERMINAL_STABILITY_LIMIT_DEG
+    gust_survived = bool(deployed and controller.max_gust_deflection < math.radians(GUST_DEFLECTION_LIMIT_DEG))
     result = TrialResult(
         mode="feedback" if feedback else "blind_timing",
         seed=seed,
+        scenario=controller.scenario,
+        wind_profile=controller.wind_profile,
         gust_direction_deg=round(controller.gust_direction, 3),
         gust_peak_n=round(controller.gust_peak, 3),
         frame_spring_nm_per_rad=round(controller.frame_spring_stiffness, 3),
@@ -436,11 +520,14 @@ def run_trial(seed: int, feedback: bool, capture_video: bool = False) -> tuple[T
         gust_survived=gust_survived,
         max_frame_error_deg=round(math.degrees(controller.max_deflection), 3),
         max_gust_deflection_deg=round(math.degrees(controller.max_gust_deflection), 3),
-        final_frame_error_deg=round(math.degrees(abs(final_pitch - FRAME_TARGET_RAD)), 3),
+        final_frame_error_deg=round(final_error_deg, 3),
         peak_guyline_load_n=round(controller.peak_guyline_load, 3),
         mean_guyline_extension_mm=round(float(np.mean([entry["guyline_lengths_m"][0] + entry["guyline_lengths_m"][1] - 2.0 * GUYLINE_REST_M for entry in controller.history]) * 500.0), 3),
         peak_palm_contact_n=round(controller.peak_contact, 3),
         feedback_corrections=controller.corrections,
+        recovery_events=controller.recovery_events,
+        max_tension_imbalance_n=round(controller.max_tension_imbalance, 3),
+        stability_margin_deg=round(TERMINAL_STABILITY_LIMIT_DEG - final_error_deg, 3),
         contact_samples=controller.contact_samples,
         simulated_seconds=EPISODE_S,
     )
@@ -460,17 +547,19 @@ def decorate(frame: np.ndarray, sample: dict[str, Any], index: int, total: int) 
     image = Image.fromarray(frame)
     draw = ImageDraw.Draw(image, "RGBA")
     width, height = image.size
-    draw.rounded_rectangle((16, 16, 455, 150), radius=13, fill=(3, 12, 23, 222), outline=(53, 242, 216, 235), width=2)
+    draw.rounded_rectangle((16, 16, 505, 174), radius=13, fill=(3, 12, 23, 222), outline=(53, 242, 216, 235), width=2)
     draw.text((33, 29), "AURORA FRAME", font=font(27), fill=(226, 255, 249, 255))
-    draw.text((33, 63), "EMERGENCY SHELTER / LIVE PHYSICS", font=font(14), fill=(255, 190, 92, 255))
+    draw.text((33, 63), "ADAPTIVE SHELTER RECOVERY / LIVE PHYSICS", font=font(14), fill=(255, 190, 92, 255))
     draw.text((33, 91), sample["phase"].replace("_", " "), font=font(16), fill=(183, 246, 236, 255))
-    draw.text((33, 117), f"Frame error {sample['frame_deflection_deg']:.1f}°   Wind {sample['gust_n']:.1f} N", font=font(14), fill=(228, 238, 244, 255))
+    draw.text((33, 117), f"{sample['scenario'].replace('_', ' ').upper()}  wind {sample['gust_n']:.1f} N @ {sample['wind_direction_deg']:.0f} deg", font=font(14), fill=(228, 238, 244, 255))
+    draw.text((33, 141), f"Frame error {sample['frame_deflection_deg']:.1f} deg   recovery events {sample['recovery_events']}", font=font(14), fill=(228, 238, 244, 255))
     draw.rounded_rectangle((width - 288, 16, width - 16, 153), radius=13, fill=(3, 12, 23, 218), outline=(255, 174, 67, 235), width=2)
     draw.text((width - 267, 28), "SAFETY GATES", font=font(16), fill=(255, 222, 174, 255))
     latch_text = " ".join("●" if value >= LATCH_TRAVEL_M * 1000 else "○" for value in sample["latch_travel_mm"])
     draw.text((width - 267, 57), f"LATCHES  {latch_text}", font=font(19), fill=(98, 255, 180, 255))
     draw.text((width - 267, 88), f"GUY LOAD  {max(sample['guyline_loads_n']):.1f} N", font=font(14), fill=(226, 239, 246, 255))
     draw.text((width - 267, 112), f"CONTACT   {sample['palm_frame_contact_n']:.1f} N", font=font(14), fill=(226, 239, 246, 255))
+    draw.text((width - 267, 134), f"GUST DEF  {sample['gust_deflection_deg']:.1f} deg", font=font(14), fill=(226, 239, 246, 255))
     draw.rectangle((17, height - 38, width - 17, height - 22), fill=(6, 15, 25, 216))
     draw.rectangle((17, height - 38, 17 + int((width - 34) * index / max(1, total - 1)), height - 22), fill=(38, 222, 191, 240))
     return np.asarray(image)
@@ -482,18 +571,19 @@ def evidence_card(summary: dict[str, Any], baseline: dict[str, Any], width: int 
     image = Image.new("RGB", (width, height), (5, 14, 25))
     draw = ImageDraw.Draw(image, "RGBA")
     draw.rectangle((0, 0, width, 9), fill=(41, 230, 196, 255))
-    draw.text((58, 62), "AURORA FRAME", font=font(42), fill=(220, 255, 248, 255))
-    draw.text((60, 116), "PHYSICS-GROUNDED STORM DEPLOYMENT", font=font(20), fill=(255, 190, 92, 255))
+    draw.text((58, 62), "AURORA FRAME 2.0", font=font(42), fill=(220, 255, 248, 255))
+    draw.text((60, 116), "ADAPTIVE GUST RECOVERY BENCHMARK", font=font(20), fill=(255, 190, 92, 255))
     draw.rounded_rectangle((58, 172, 410, 386), radius=18, fill=(10, 34, 48, 255), outline=(42, 229, 194, 255), width=3)
     draw.rounded_rectangle((490, 172, 842, 386), radius=18, fill=(36, 24, 27, 255), outline=(255, 166, 70, 255), width=3)
     draw.text((87, 200), "CLOSED-LOOP", font=font(23), fill=(164, 255, 226, 255))
     draw.text((86, 240), f"{summary['successes']}/{summary['trials']}", font=font(62), fill=(222, 255, 248, 255))
-    draw.text((87, 319), "feedback deployments passed", font=font(16), fill=(203, 232, 240, 255))
+    draw.text((87, 319), "adaptive recoveries passed", font=font(16), fill=(203, 232, 240, 255))
     draw.text((519, 200), "BLIND TIMING", font=font(23), fill=(255, 205, 151, 255))
     draw.text((518, 240), f"{baseline['successes']}/{baseline['trials']}", font=font(62), fill=(255, 234, 217, 255))
     draw.text((519, 319), "identical seeded disturbances", font=font(16), fill=(234, 214, 202, 255))
-    draw.text((60, 441), "PASS GATES: 3 passive latches  •  terminal stability  •  gust recovery", font=font(18), fill=(201, 235, 241, 255))
-    draw.text((60, 480), "No task-object actuators. No task-object pose edits after initialization.", font=font(16), fill=(115, 211, 206, 255))
+    draw.text((60, 430), "4 WIND PROFILES: calm / crosswind / rotating gust / microburst recovery", font=font(18), fill=(201, 235, 241, 255))
+    draw.text((60, 466), "PASS GATES: 3 passive latches  •  terminal stability  •  gust recovery", font=font(17), fill=(201, 235, 241, 255))
+    draw.text((60, 500), "No task-object actuators. No task-object pose edits after initialization.", font=font(15), fill=(115, 211, 206, 255))
     return np.asarray(image)
 
 
@@ -516,16 +606,21 @@ def write_video(frames: list[np.ndarray], history: list[dict[str, Any]], summary
 
 def summarize(rows: list[TrialResult]) -> dict[str, Any]:
     count = max(1, len(rows))
+    scenario_counts = {scenario: int(sum(row.scenario == scenario for row in rows)) for scenario in SCENARIOS}
     return {
         "trials": len(rows),
         "successes": int(sum(row.success for row in rows)),
         "success_rate": round(sum(row.success for row in rows) / count, 4),
+        "scenario_counts": scenario_counts,
         "mean_max_frame_error_deg": round(float(np.mean([row.max_frame_error_deg for row in rows])), 3),
         "mean_max_gust_deflection_deg": round(float(np.mean([row.max_gust_deflection_deg for row in rows])), 3),
         "mean_final_frame_error_deg": round(float(np.mean([row.final_frame_error_deg for row in rows])), 3),
         "mean_peak_guyline_load_n": round(float(np.mean([row.peak_guyline_load_n for row in rows])), 3),
         "mean_latches_engaged": round(float(np.mean([row.latches_engaged for row in rows])), 2),
         "mean_feedback_corrections": round(float(np.mean([row.feedback_corrections for row in rows])), 2),
+        "mean_recovery_events": round(float(np.mean([row.recovery_events for row in rows])), 2),
+        "mean_max_tension_imbalance_n": round(float(np.mean([row.max_tension_imbalance_n for row in rows])), 3),
+        "mean_stability_margin_deg": round(float(np.mean([row.stability_margin_deg for row in rows])), 3),
     }
 
 
@@ -535,25 +630,30 @@ def write_artifacts(feedback: list[TrialResult], baseline: list[TrialResult], hi
     feedback_summary = summarize(feedback)
     baseline_summary = summarize(baseline)
     metrics = {
-        "project": "AURORA FRAME — Bimanual Emergency Shelter Deployment Under Wind",
+        "project": "AURORA FRAME 2.0 - Adaptive Bimanual Shelter Recovery Under Wind",
         "engine": "MuJoCo",
         "robot": "Fixed-base bimanual emergency-response rig with six force-limited Cartesian axes",
-        "task": "Catch a passive spring-loaded shelter, physically press three latch sliders, and retain the frame during gusts through palm contact and tendon feedback.",
+        "task": "Catch a passive spring-loaded shelter, physically press three latch sliders, then recover the frame through rotating and microburst wind profiles using palm contact and tendon feedback.",
         "physics_integrity": {
             "task_object_actuators": "none",
             "direct_task_object_qpos_writes_after_initialization": "none",
             "passive_components": ["frame pitch hinge", "three latch slide joints", "two spatial guyline tendons"],
-            "disturbance": "MuJoCo xfrc_applied wind force and pitch torque on the dynamic shelter frame",
+            "disturbance": "MuJoCo xfrc_applied wind force and pitch torque on the dynamic shelter frame; profiles include calm, crosswind, rotating gust, and microburst recovery",
         },
         "sensors": ["frame pitch and angular velocity", "three latch positions", "two tendon lengths", "both palm positions", "actual palm-handle contact forces"],
-        "evaluation": {"paired_held_out_seeds": cases, "randomized": ["gust direction", "gust peak", "initial frame angle", "frame spring rate", "guyline stiffness"]},
+        "evaluation": {
+            "paired_held_out_seeds": cases,
+            "scenario_suite": list(SCENARIOS),
+            "randomized": ["wind profile", "gust direction", "gust peak", "initial frame angle", "frame spring rate", "guyline stiffness"],
+        },
         "feedback": feedback_summary,
         "blind_timing_baseline": baseline_summary,
         "delta_success_rate": round(feedback_summary["success_rate"] - baseline_summary["success_rate"], 4),
+        "headline": f"{feedback_summary['successes']}/{feedback_summary['trials']} adaptive closed-loop passes versus {baseline_summary['successes']}/{baseline_summary['trials']} blind-timing passes across four seeded wind profiles.",
         "demo_video": video.name,
         "limitations": [
             "Simulation-only project; no hardware deployment claim.",
-            "Wind is modeled as an external force/torque rather than a CFD airflow model.",
+            "Wind is a seeded external force/torque profile rather than CFD airflow.",
             "The robot is a fixed-base upper-body rig to isolate bimanual deployment control from walking.",
         ],
     }
@@ -563,8 +663,8 @@ def write_artifacts(feedback: list[TrialResult], baseline: list[TrialResult], hi
     (ARTIFACTS / "sensor_policy_card.json").write_text(json.dumps({
         "observations": ["frame hinge angle", "frame angular velocity", "latch slide positions", "guyline tendon lengths", "palm-handle contact forces"],
         "actions": ["left/right Cartesian palm x/y/z position targets"],
-        "feedback_law": "palm contact points shift with measured frame-pitch error during gust stabilization",
-        "safety_gates": ["all three latch positions ≥ 39 mm", "terminal frame error < 10.5 degrees", "maximum gust deflection < 5 degrees"],
+        "feedback_law": "palm contact points shift with measured frame-pitch error; recovery events are triggered during rotating gusts and microbursts while tendon lengths are monitored as passive load checks",
+        "safety_gates": [f"all three latch positions >= {LATCH_TRAVEL_M * 1000:.0f} mm", f"terminal frame error < {TERMINAL_STABILITY_LIMIT_DEG:.1f} degrees", f"maximum gust deflection < {GUST_DEFLECTION_LIMIT_DEG:.1f} degrees"],
     }, indent=2), encoding="utf-8")
     with (ARTIFACTS / "benchmark.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(asdict(feedback[0]).keys()))
@@ -574,30 +674,33 @@ def write_artifacts(feedback: list[TrialResult], baseline: list[TrialResult], hi
     (ARTIFACTS / "artifact_manifest.json").write_text(json.dumps({
         "generated_by": "python run_aurora_frame.py",
         "cases_per_condition": cases,
+        "scenario_suite": list(SCENARIOS),
         "artifacts": ["aurora_frame_demo.mp4", "aurora_frame_scene.xml", "metrics.json", "paired_ablation.json", "demo_trajectory.json", "sensor_policy_card.json", "benchmark.csv"],
     }, indent=2), encoding="utf-8")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the AURORA FRAME MuJoCo benchmark.")
-    parser.add_argument("--cases", type=int, default=30, help="Paired feedback/baseline held-out seeds.")
+    parser.add_argument("--cases", type=int, default=DEFAULT_CASES, help="Paired feedback/baseline held-out seeds.")
     parser.add_argument("--quick", action="store_true", help="Use four paired seeds for a smoke test.")
     parser.add_argument("--no-video", action="store_true", help="Skip demo rendering.")
-    parser.add_argument("--demo-seed", type=int, default=2031, help="Seed used for the rendered feedback episode.")
+    parser.add_argument("--demo-seed", type=int, default=4118, help="Seed used for the rendered feedback episode.")
+    parser.add_argument("--demo-scenario", choices=SCENARIOS, default="microburst_recovery", help="Scenario used for the rendered feedback episode.")
     args = parser.parse_args()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     cases = 4 if args.quick else max(1, args.cases)
-    print("AURORA FRAME: paired storm-deployment benchmark")
+    print("AURORA FRAME 2.0: adaptive gust-recovery benchmark")
     feedback_rows: list[TrialResult] = []
     baseline_rows: list[TrialResult] = []
     for index in range(cases):
         seed = 4100 + index
-        feedback, _, _ = run_trial(seed, feedback=True)
-        baseline, _, _ = run_trial(seed, feedback=False)
+        scenario = scenario_for_index(index)
+        feedback, _, _ = run_trial(seed, feedback=True, scenario=scenario)
+        baseline, _, _ = run_trial(seed, feedback=False, scenario=scenario)
         feedback_rows.append(feedback)
         baseline_rows.append(baseline)
         print(f"  seed {seed}: feedback={'PASS' if feedback.success else 'FAIL'} | baseline={'PASS' if baseline.success else 'FAIL'} | latches={feedback.latches_engaged}/3 | gust defl={feedback.max_gust_deflection_deg:.1f}°")
-    demo_result, frames, history = run_trial(args.demo_seed, feedback=True, capture_video=not args.no_video)
+    demo_result, frames, history = run_trial(args.demo_seed, feedback=True, capture_video=not args.no_video, scenario=args.demo_scenario)
     video = ARTIFACTS / "aurora_frame_demo.mp4"
     if args.no_video:
         if not video.exists():

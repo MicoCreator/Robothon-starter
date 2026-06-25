@@ -30,10 +30,16 @@ def main() -> None:
     metrics = json.loads((OUTPUTS / "metrics.json").read_text(encoding="utf-8"))
     feedback = metrics["feedback"]
     baseline = metrics["blind_timing_baseline"]
-    if feedback["trials"] < 1 or feedback["successes"] != feedback["trials"]:
+    if feedback["trials"] < 128:
+        raise SystemExit("Benchmark should include at least 128 paired closed-loop trials.")
+    if feedback["successes"] != feedback["trials"]:
         raise SystemExit("Closed-loop benchmark is incomplete or contains failed trials.")
     if feedback["success_rate"] <= baseline["success_rate"]:
         raise SystemExit("Feedback does not outperform the blind-timing baseline.")
+    if len(metrics["evaluation"].get("scenario_suite", [])) < 4:
+        raise SystemExit("Scenario suite should cover calm, crosswind, rotating gust, and microburst recovery.")
+    if feedback.get("mean_recovery_events", 0) <= 0:
+        raise SystemExit("Adaptive recovery events were not recorded.")
     scene = (OUTPUTS / "aurora_frame_scene.xml").read_text(encoding="utf-8")
     forbidden = ("<position name=\"frame", "<motor name=\"frame", "<position name=\"latch", "<motor name=\"latch")
     if any(token in scene for token in forbidden):

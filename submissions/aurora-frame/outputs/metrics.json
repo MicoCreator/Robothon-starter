@@ -1,8 +1,8 @@
 {
-  "project": "AURORA FRAME \u2014 Bimanual Emergency Shelter Deployment Under Wind",
+  "project": "AURORA FRAME 2.0 - Adaptive Bimanual Shelter Recovery Under Wind",
   "engine": "MuJoCo",
   "robot": "Fixed-base bimanual emergency-response rig with six force-limited Cartesian axes",
-  "task": "Catch a passive spring-loaded shelter, physically press three latch sliders, and retain the frame during gusts through palm contact and tendon feedback.",
+  "task": "Catch a passive spring-loaded shelter, physically press three latch sliders, then recover the frame through rotating and microburst wind profiles using palm contact and tendon feedback.",
   "physics_integrity": {
     "task_object_actuators": "none",
     "direct_task_object_qpos_writes_after_initialization": "none",
@@ -11,7 +11,7 @@
       "three latch slide joints",
       "two spatial guyline tendons"
     ],
-    "disturbance": "MuJoCo xfrc_applied wind force and pitch torque on the dynamic shelter frame"
+    "disturbance": "MuJoCo xfrc_applied wind force and pitch torque on the dynamic shelter frame; profiles include calm, crosswind, rotating gust, and microburst recovery"
   },
   "sensors": [
     "frame pitch and angular velocity",
@@ -21,8 +21,15 @@
     "actual palm-handle contact forces"
   ],
   "evaluation": {
-    "paired_held_out_seeds": 30,
+    "paired_held_out_seeds": 128,
+    "scenario_suite": [
+      "calm",
+      "crosswind",
+      "rotating_gust",
+      "microburst_recovery"
+    ],
     "randomized": [
+      "wind profile",
       "gust direction",
       "gust peak",
       "initial frame angle",
@@ -31,32 +38,51 @@
     ]
   },
   "feedback": {
-    "trials": 30,
-    "successes": 30,
+    "trials": 128,
+    "successes": 128,
     "success_rate": 1.0,
-    "mean_max_frame_error_deg": 11.164,
-    "mean_max_gust_deflection_deg": 2.348,
-    "mean_final_frame_error_deg": 9.007,
-    "mean_peak_guyline_load_n": 119.843,
+    "scenario_counts": {
+      "calm": 32,
+      "crosswind": 32,
+      "rotating_gust": 32,
+      "microburst_recovery": 32
+    },
+    "mean_max_frame_error_deg": 10.794,
+    "mean_max_gust_deflection_deg": 2.857,
+    "mean_final_frame_error_deg": 8.294,
+    "mean_peak_guyline_load_n": 118.316,
     "mean_latches_engaged": 3.0,
-    "mean_feedback_corrections": 58.0
+    "mean_feedback_corrections": 58.0,
+    "mean_recovery_events": 17.0,
+    "mean_max_tension_imbalance_n": 0.0,
+    "mean_stability_margin_deg": 2.206
   },
   "blind_timing_baseline": {
-    "trials": 30,
-    "successes": 12,
-    "success_rate": 0.4,
-    "mean_max_frame_error_deg": 11.164,
-    "mean_max_gust_deflection_deg": 0.478,
-    "mean_final_frame_error_deg": 10.263,
-    "mean_peak_guyline_load_n": 119.843,
+    "trials": 128,
+    "successes": 55,
+    "success_rate": 0.4297,
+    "scenario_counts": {
+      "calm": 32,
+      "crosswind": 32,
+      "rotating_gust": 32,
+      "microburst_recovery": 32
+    },
+    "mean_max_frame_error_deg": 10.794,
+    "mean_max_gust_deflection_deg": 0.626,
+    "mean_final_frame_error_deg": 9.874,
+    "mean_peak_guyline_load_n": 118.316,
     "mean_latches_engaged": 3.0,
-    "mean_feedback_corrections": 0.0
+    "mean_feedback_corrections": 0.0,
+    "mean_recovery_events": 0.0,
+    "mean_max_tension_imbalance_n": 0.0,
+    "mean_stability_margin_deg": 0.626
   },
-  "delta_success_rate": 0.6,
+  "delta_success_rate": 0.5703,
+  "headline": "128/128 adaptive closed-loop passes versus 55/128 blind-timing passes across four seeded wind profiles.",
   "demo_video": "aurora_frame_demo.mp4",
   "limitations": [
     "Simulation-only project; no hardware deployment claim.",
-    "Wind is modeled as an external force/torque rather than a CFD airflow model.",
+    "Wind is a seeded external force/torque profile rather than CFD airflow.",
     "The robot is a fixed-base upper-body rig to isolate bimanual deployment control from walking."
   ]
 }
